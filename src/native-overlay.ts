@@ -52,6 +52,7 @@ import {
 import { buildDocIndex, anchorQuote } from "./anchor";
 import { parseLegacyNote, targetBasename, type LegacyAnnotation } from "./legacy-import";
 import { PdfBundleManager } from "./bundles";
+import { copyPdfDataForWorker } from "./pdf-data";
 
 const MAX_HIGHLIGHT_ALPHA = 0.46;
 /** DOM that belongs to us; mutations inside it must not re-trigger syncing. */
@@ -369,7 +370,7 @@ export class NativePdfOverlay {
     const data = await this.app.vault.readBinary(this.file);
     if (this.destroyed) return;
     this.pdfWorker = createDedicatedWorker();
-    const params: any = { data: new Uint8Array(data), useSystemFonts: true };
+    const params: any = { data: copyPdfDataForWorker(data), useSystemFonts: true };
     if (this.pdfWorker) params.worker = this.pdfWorker;
     this.pdfDoc = await pdfjsLib.getDocument(params).promise;
     if (this.destroyed) {

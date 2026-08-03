@@ -30,6 +30,7 @@ import {
 import { buildDocIndex, anchorQuote } from "./anchor";
 import { parseLegacyNote, targetBasename, type LegacyAnnotation } from "./legacy-import";
 import { PdfBundleManager } from "./bundles";
+import { copyPdfDataForWorker } from "./pdf-data";
 
 export const VIEW_TYPE_PDF_ANNOTATOR = "local-pdf-annotator-view";
 
@@ -490,7 +491,7 @@ export class PdfAnnotatorView extends FileView {
       // Dedicated worker per document (never shared) so a 2nd open PDF can't
       // blank this one's canvas, and so we never touch Obsidian's global worker.
       this.pdfWorker = createDedicatedWorker();
-      const params: any = { data: new Uint8Array(data), useSystemFonts: true };
+      const params: any = { data: copyPdfDataForWorker(data), useSystemFonts: true };
       if (this.pdfWorker) params.worker = this.pdfWorker;
       const loadingTask = pdfjsLib.getDocument(params);
       this.pdfDoc = await loadingTask.promise;
