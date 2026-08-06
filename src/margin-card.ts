@@ -59,8 +59,8 @@ function displayUnits(text: string, weight = 1): number {
  * length; the card itself supplies the collapsed/expanded viewport rules. */
 export function syncMarginCardPresentation(card: HTMLElement): void {
   for (const textarea of card.querySelectorAll<HTMLTextAreaElement>("textarea")) {
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.max(textarea.scrollHeight, 20)}px`;
+    textarea.setCssProps({ height: "auto" });
+    textarea.setCssProps({ height: `${Math.max(textarea.scrollHeight, 20)}px` });
   }
 
   const note = card.querySelector<HTMLTextAreaElement>(".lpa-margin-note")?.value ?? "";
