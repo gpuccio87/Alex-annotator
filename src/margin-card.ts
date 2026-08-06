@@ -4,16 +4,48 @@ export function marginCardSourceText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-const FOLDED_CARD_MIN_HEIGHT = 48;
-const FOLDED_CARD_MAX_HEIGHT = 132;
+export const FOLDED_CARD_MIN_HEIGHT = 54;
+const FOLDED_CARD_MAX_HEIGHT = 188;
 
-/** A logarithmic fold keeps length legible without letting several long notes
- * consume the rail. Every additional passage still makes the resting card
- * taller, but progressively less so. */
+/** A linear-then-logarithmic fold keeps length legible without letting several
+ * long notes consume the rail. Every additional passage still makes the
+ * resting card taller, but progressively less so. */
 export function foldedMarginCardHeight(displayUnits: number): number {
   const units = Math.max(0, displayUnits);
-  const scaled = FOLDED_CARD_MIN_HEIGHT + 14 * Math.log2(1 + units / 42);
+  // Keep the first few hundred characters close to linear so a glance at the
+  // rail genuinely communicates "short / medium / long". Only the tail is
+  // logarithmic, which prevents very long notes from taking over a busy page.
+  const linearUnits = Math.min(units, 360);
+  const tailUnits = Math.max(0, units - linearUnits);
+  const scaled =
+    FOLDED_CARD_MIN_HEIGHT +
+    linearUnits * 0.24 +
+    18 * Math.log2(1 + tailUnits / 220);
   return Math.round(Math.min(FOLDED_CARD_MAX_HEIGHT, scaled));
+}
+
+/** Compress a whole rail only when its resting cards would not fit. The same
+ * factor is applied to every card's extra height, so their relative lengths
+ * remain visible instead of collapsing into one uniform stack. */
+export function fitFoldedMarginCardHeights(heights: number[], availableHeight: number): number[] {
+  if (!heights.length) return [];
+  const clean = heights.map((height) => Math.max(24, height));
+  const available = Math.max(24 * clean.length, availableHeight);
+  const total = clean.reduce((sum, height) => sum + height, 0);
+  if (total <= available) return clean.map(Math.round);
+
+  const floors = clean.map((height) => Math.min(height, FOLDED_CARD_MIN_HEIGHT));
+  const floorTotal = floors.reduce((sum, height) => sum + height, 0);
+  if (floorTotal >= available) {
+    const scale = available / floorTotal;
+    return floors.map((height) => Math.max(24, Math.floor(height * scale)));
+  }
+
+  const extraBudget = available - floorTotal;
+  const extras = clean.map((height, index) => height - floors[index]);
+  const extraTotal = extras.reduce((sum, height) => sum + height, 0);
+  const scale = extraTotal > 0 ? Math.min(1, extraBudget / extraTotal) : 0;
+  return clean.map((_, index) => Math.round(floors[index] + extras[index] * scale));
 }
 
 function displayUnits(text: string, weight = 1): number {
@@ -36,8 +68,9 @@ export function syncMarginCardPresentation(card: HTMLElement): void {
   const source = card.querySelector<HTMLElement>(".lpa-margin-source")?.textContent ?? "";
   // User-authored comments are the strongest signal; the quoted source still
   // contributes enough to distinguish short and long selected passages.
-  const units = displayUnits(note) + displayUnits(sideNote) + displayUnits(source, 0.55);
+  const units = displayUnits(note) + displayUnits(sideNote) + displayUnits(source, 0.25);
   const foldedHeight = foldedMarginCardHeight(units);
   card.style.setProperty("--lpa-card-folded-height", `${foldedHeight}px`);
-  card.classList.toggle("is-folded", foldedHeight > FOLDED_CARD_MIN_HEIGHT + 8);
+  card.dataset.foldedHeight = String(foldedHeight);
+  card.classList.toggle("is-folded", units > 64);
 }

@@ -1252,7 +1252,7 @@
 .lpa-margin-card {
   position: absolute;
   width: min(calc(100% - 14px), var(--lpa-card-max, 156px));
-  max-height: var(--lpa-card-folded-height, 56px);
+  max-height: var(--lpa-card-density-height, var(--lpa-card-folded-height, 56px));
   overflow: hidden;
   padding: 13px 7px 6px 8px;
   border: 0.5px solid var(--background-modifier-border);
@@ -1287,6 +1287,26 @@
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--lpa-accent, var(--interactive-accent)) 65%, transparent);
   pointer-events: none;
 }
+.lpa-margin-card.is-folded:not(.is-hover):not(.is-active):not(.is-pinned):not(:hover)::after {
+  content: "\2026";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 0;
+  height: 23px;
+  padding-top: 8px;
+  box-sizing: border-box;
+  text-align: center;
+  color: color-mix(in srgb, var(--text-muted) 64%, var(--lpa-accent, var(--interactive-accent)));
+  font-size: 13px;
+  line-height: 1;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in srgb, var(--background-primary) 86%, var(--background-secondary)) 58%
+  );
+  pointer-events: none;
+}
 .lpa-margin-left .lpa-margin-card {
   left: auto;
   right: 7px;
@@ -1304,7 +1324,7 @@
 }
 .lpa-margin.is-tight .lpa-margin-card {
   width: calc(100% - 6px);
-  max-height: var(--lpa-card-folded-height, 50px);
+  max-height: var(--lpa-card-density-height, var(--lpa-card-folded-height, 50px));
   padding: 11px 5px 5px;
   border-radius: 3px;
 }
@@ -1322,7 +1342,7 @@
 }
 .lpa-margin.is-compact .lpa-margin-card {
   width: min(calc(100% - 10px), var(--lpa-card-max, 132px));
-  max-height: var(--lpa-card-folded-height, 54px);
+  max-height: var(--lpa-card-density-height, var(--lpa-card-folded-height, 54px));
   padding: 12px 6px 6px;
 }
 .lpa-margin.is-compact .lpa-margin-card::before {
@@ -1336,7 +1356,7 @@
   left: 5px;
 }
 .lpa-margin.is-roomy .lpa-margin-card {
-  max-height: var(--lpa-card-folded-height, 66px);
+  max-height: var(--lpa-card-density-height, var(--lpa-card-folded-height, 66px));
   padding: 14px 8px 7px;
 }
 .lpa-margin.is-roomy .lpa-margin-card::before,
@@ -1345,7 +1365,7 @@
   right: 8px;
 }
 .lpa-margin.is-spacious .lpa-margin-card {
-  max-height: var(--lpa-card-folded-height, 78px);
+  max-height: var(--lpa-card-density-height, var(--lpa-card-folded-height, 78px));
 }
 .lpa-margin-card--tag {
   opacity: 0;

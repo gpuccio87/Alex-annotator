@@ -53,7 +53,11 @@ import { buildDocIndex, anchorQuote } from "./anchor";
 import { parseLegacyNote, targetBasename, type LegacyAnnotation } from "./legacy-import";
 import { PdfBundleManager } from "./bundles";
 import { copyPdfDataForWorker } from "./pdf-data";
-import { marginCardSourceText, syncMarginCardPresentation } from "./margin-card";
+import {
+  fitFoldedMarginCardHeights,
+  marginCardSourceText,
+  syncMarginCardPresentation,
+} from "./margin-card";
 
 const MAX_HIGHLIGHT_ALPHA = 0.46;
 /** DOM that belongs to us; mutations inside it must not re-trigger syncing. */
@@ -67,6 +71,7 @@ const RAIL_READABLE_WIDTH = 156;
 const RAIL_SCROLLBAR_GUTTER = 14;
 const RAIL_AUTO_ZOOM_MAX_STEPS = 5;
 const RAIL_AUTO_ZOOM_SETTLE_MS = 170;
+const RAIL_AUTO_ZOOM_MEASURE_ATTEMPTS = 12;
 
 interface PageGeom {
   vp1: any; // pdf.js viewport at scale 1 (the page's own /Rotate applied)
@@ -306,6 +311,7 @@ export class NativePdfOverlay {
   private destroyed = false;
   private store: AnnotationStore | null = null;
   private pdfDoc: any | null = null;
+  private pageLabelsPromise: Promise<string[] | null> | null = null;
   private pdfWorker: any | null = null;
   private geoms = new Map<number, PageGeom>();
   private geomPromises = new Map<number, Promise<PageGeom | null>>();
@@ -509,6 +515,7 @@ export class NativePdfOverlay {
       this.pdfWorker?.destroy();
     } catch {}
     this.pdfDoc = null;
+    this.pageLabelsPromise = null;
     this.pdfWorker = null;
   }
 
@@ -1054,6 +1061,11 @@ export class NativePdfOverlay {
     this.notifyStoreChanged();
     if (mode === "annotate" && created[0]) {
       this.openEditPopover(created[0].id, anchorX, anchorY, { focusNote: true });
+    } else if (created[0]) {
+      // A new plain highlight still owns a temporary side card. Reveal enough
+      // margin immediately so the user learns where that card lives.
+      this.setActiveAnnotation(created[0].id);
+      void this.ensureReadableRailForAnnotation(created[0].id);
     }
   }
 
@@ -1383,10 +1395,19 @@ export class NativePdfOverlay {
       await this.ensureGeom(first.page);
     }
 
-    for (let step = 0; step < RAIL_AUTO_ZOOM_MAX_STEPS; step++) {
+    let step = 0;
+    let measureAttempts = 0;
+    while (step < RAIL_AUTO_ZOOM_MAX_STEPS) {
       if (this.destroyed || this.activeId !== id || token !== this.railAutoZoomToken) return;
       const measure = this.measureAnnotationRail(id);
-      if (!measure) return;
+      if (!measure) {
+        // Native PDF pages are painted lazily after list navigation. Give the
+        // target page a short window to appear before deciding no rail exists.
+        if (++measureAttempts >= RAIL_AUTO_ZOOM_MEASURE_ATTEMPTS) return;
+        await sleep(100);
+        continue;
+      }
+      measureAttempts = 0;
       if (measure.width >= RAIL_READABLE_WIDTH) {
         this.scheduleRailLayout();
         return;
@@ -1399,6 +1420,7 @@ export class NativePdfOverlay {
       }
 
       zoomOut.click();
+      step++;
       await this.waitForRailAutoZoomSettle();
     }
     this.scheduleRailLayout();
@@ -1817,7 +1839,10 @@ export class NativePdfOverlay {
     const byId = new Map(desired.map((d) => [d.h.id, d]));
     for (const rail of [this.leftRailEl, this.rightRailEl]) {
       if (!rail) continue;
-      const items = Array.from(rail.querySelectorAll<HTMLElement>(".lpa-margin-card"))
+      const cards = Array.from(rail.querySelectorAll<HTMLElement>(".lpa-margin-card"));
+      const gap = 5;
+      applyMarginCardDensity(cards, rail.clientHeight, gap);
+      const items = cards
         .map((card) => {
           const entry = byId.get(card.dataset.hlId ?? "");
           const idealY = entry
@@ -1827,7 +1852,6 @@ export class NativePdfOverlay {
         })
         .sort((a, b) => a.idealY - b.idealY);
       let y = 8;
-      const gap = 5;
       for (const item of items) {
         y = Math.max(item.idealY, y);
         item.card.setCssProps({ top: `${Math.round(y)}px` });
@@ -2174,10 +2198,12 @@ export class NativePdfOverlay {
     const h = this.store?.get(id);
     const root = this.contentRoot;
     if (!h || !root) return;
-    const pageEl = root.querySelector<HTMLElement>(`.page[data-page-number="${h.page + 1}"]`);
+    this.setActiveAnnotation(id);
+    const pageEl = await this.navigateNativeToPage(h.page);
     if (!pageEl) return;
     pageEl.scrollIntoView({ block: "center" });
-    this.setActiveAnnotation(id);
+    // This routine polls through the native viewer's lazy page render and then
+    // zooms out only until the selected card has readable side space.
     void this.ensureReadableRailForAnnotation(id);
     this.scheduleRailLayout();
     // The native viewer renders lazily; poll briefly for the painted mark.
@@ -2204,6 +2230,65 @@ export class NativePdfOverlay {
         return;
       }
     }
+  }
+
+  /** Navigate through the native toolbar when the requested page has not been
+   * materialised in Obsidian's lazy PDF DOM. PDF page labels matter here: a
+   * book's physical page 27 may be labelled "5" after its front matter. */
+  private async navigateNativeToPage(pageIndex: number): Promise<HTMLElement | null> {
+    const root = this.contentRoot;
+    if (!root) return null;
+    const selector = `.page[data-page-number="${pageIndex + 1}"]`;
+    const existing = root.querySelector<HTMLElement>(selector);
+    if (existing) return existing;
+
+    const input = this.findNativePageNumberInput();
+    if (!input) return null;
+    const labels = await this.getNativePageLabels();
+    if (this.destroyed) return null;
+    const label = labels?.[pageIndex] || String(pageIndex + 1);
+    input.focus({ preventScroll: true });
+    input.value = label;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true })
+    );
+    input.dispatchEvent(
+      new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true })
+    );
+    input.blur();
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await sleep(100);
+      if (this.destroyed) return null;
+      const pageEl = root.querySelector<HTMLElement>(selector);
+      if (pageEl) return pageEl;
+    }
+    return null;
+  }
+
+  private findNativePageNumberInput(): HTMLInputElement | null {
+    const container = this.leaf.view.containerEl;
+    const toolbar = container.querySelector<HTMLElement>(".pdf-toolbar") ?? container;
+    return (
+      toolbar.querySelector<HTMLInputElement>(
+        "input.pdf-page-input, input.pageNumber, input[type='number'], input[aria-label*='page' i], input[title*='page' i]"
+      ) ??
+      Array.from(toolbar.querySelectorAll<HTMLInputElement>("input")).find(
+        (input) => !input.closest(".lpa-native-controls, .lpa-native-roll")
+      ) ??
+      null
+    );
+  }
+
+  private getNativePageLabels(): Promise<string[] | null> {
+    if (!this.pageLabelsPromise) {
+      this.pageLabelsPromise = Promise.resolve(this.pdfDoc?.getPageLabels?.())
+        .then((labels) => (Array.isArray(labels) ? labels.map(String) : null))
+        .catch(() => null);
+    }
+    return this.pageLabelsPromise;
   }
 
   // ---- legacy import (same behavior as the custom annotator view) --------------
@@ -2653,6 +2738,34 @@ function measureMarginCardHeight(card: HTMLElement): number {
   const natural = card.scrollHeight + borderY;
   const target = Number.isFinite(maxHeight) ? Math.min(natural, maxHeight) : natural;
   return Math.max(24, current, target);
+}
+
+function applyMarginCardDensity(cards: HTMLElement[], railHeight: number, gap: number): void {
+  for (const card of cards) card.style.removeProperty("--lpa-card-density-height");
+  if (!cards.length || railHeight <= 0) return;
+
+  const expanded = cards.filter(
+    (card) =>
+      card.classList.contains("is-active") ||
+      card.classList.contains("is-hover") ||
+      card.classList.contains("is-pinned") ||
+      card.matches(":hover")
+  );
+  const resting = cards.filter((card) => !expanded.includes(card));
+  if (!resting.length) return;
+
+  const occupied = expanded.reduce((sum, card) => sum + measureMarginCardHeight(card), 0);
+  const available = Math.max(
+    24 * resting.length,
+    railHeight - 16 - gap * Math.max(0, cards.length - 1) - occupied
+  );
+  const fitted = fitFoldedMarginCardHeights(
+    resting.map((card) => Number.parseFloat(card.dataset.foldedHeight || "54")),
+    available
+  );
+  resting.forEach((card, index) => {
+    card.style.setProperty("--lpa-card-density-height", `${fitted[index]}px`);
+  });
 }
 
 function parseCssPixelValue(value: string, fallback = Number.POSITIVE_INFINITY): number {

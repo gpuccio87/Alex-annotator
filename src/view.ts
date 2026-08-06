@@ -31,7 +31,11 @@ import { buildDocIndex, anchorQuote } from "./anchor";
 import { parseLegacyNote, targetBasename, type LegacyAnnotation } from "./legacy-import";
 import { PdfBundleManager } from "./bundles";
 import { copyPdfDataForWorker } from "./pdf-data";
-import { marginCardSourceText, syncMarginCardPresentation } from "./margin-card";
+import {
+  fitFoldedMarginCardHeights,
+  marginCardSourceText,
+  syncMarginCardPresentation,
+} from "./margin-card";
 
 export const VIEW_TYPE_PDF_ANNOTATOR = "local-pdf-annotator-view";
 
@@ -2115,7 +2119,10 @@ export class PdfAnnotatorView extends FileView {
 
   private layoutMargin(margin: HTMLElement): void {
     if (!margin) return;
-    const cards = Array.from(margin.querySelectorAll<HTMLElement>(".lpa-margin-card"))
+    const cardElements = Array.from(margin.querySelectorAll<HTMLElement>(".lpa-margin-card"));
+    const gap = 5;
+    applyMarginCardDensity(cardElements, margin.clientHeight, gap);
+    const cards = cardElements
       .map((card) => {
         const id = card.dataset.hlId ?? "";
         const h = id ? this.store?.get(id) : undefined;
@@ -2125,7 +2132,6 @@ export class PdfAnnotatorView extends FileView {
       .filter((item): item is { card: HTMLElement; h: Highlight; anchor: AnnotationAnchor; height: number } => !!item)
       .sort((a, b) => a.anchor.idealY - b.anchor.idealY);
     let y = 8;
-    const gap = 5;
     for (const item of cards) {
       const idealTop = item.anchor.idealY;
       y = Math.max(idealTop, y);
@@ -2997,6 +3003,34 @@ function measureMarginCardHeight(card: HTMLElement): number {
   const natural = card.scrollHeight + borderY;
   const target = Number.isFinite(maxHeight) ? Math.min(natural, maxHeight) : natural;
   return Math.max(24, current, target);
+}
+
+function applyMarginCardDensity(cards: HTMLElement[], railHeight: number, gap: number): void {
+  for (const card of cards) card.style.removeProperty("--lpa-card-density-height");
+  if (!cards.length || railHeight <= 0) return;
+
+  const expanded = cards.filter(
+    (card) =>
+      card.classList.contains("is-active") ||
+      card.classList.contains("is-hover") ||
+      card.classList.contains("is-pinned") ||
+      card.matches(":hover")
+  );
+  const resting = cards.filter((card) => !expanded.includes(card));
+  if (!resting.length) return;
+
+  const occupied = expanded.reduce((sum, card) => sum + measureMarginCardHeight(card), 0);
+  const available = Math.max(
+    24 * resting.length,
+    railHeight - 16 - gap * Math.max(0, cards.length - 1) - occupied
+  );
+  const fitted = fitFoldedMarginCardHeights(
+    resting.map((card) => Number.parseFloat(card.dataset.foldedHeight || "54")),
+    available
+  );
+  resting.forEach((card, index) => {
+    card.style.setProperty("--lpa-card-density-height", `${fitted[index]}px`);
+  });
 }
 
 function parseCssPixelValue(value: string, fallback = Number.POSITIVE_INFINITY): number {
