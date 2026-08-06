@@ -6,7 +6,7 @@ words — all inside Obsidian.
 Open any PDF and click **Annotate**. You can highlight a sentence, write a note,
 and carry on reading without changing apps or opening a second document.
 
-![A PDF page with several short and long notes on both sides](docs/screenshots/annotation-cards-overview.png)
+![A PDF page with several short and long notes on both sides](docs/screenshots/annotation-cards-overview-light-retina.png)
 
 *Your notes stay close to the words they belong to.*
 
@@ -19,7 +19,7 @@ When one page has many long notes, the cards fold just enough to share the
 space. A soft fade and **…** show that more words are waiting. Point to a card or
 click it to see the whole note.
 
-![Short, medium, and long cards with a gentle folded ending](docs/screenshots/annotation-card-folding-detail.png)
+![Short, medium, and long cards with a gentle folded ending](docs/screenshots/annotation-card-folding-detail-light-retina.png)
 
 *Different note lengths are easy to spot, and folded notes clearly show that
 there is more to read.*
@@ -36,7 +36,7 @@ Select some words and choose what you want to do:
 - **Annotate** marks the words and opens a place to write.
 - **Copy** copies the selected words.
 
-![Simple buttons for highlighting, annotating, or copying selected words](docs/screenshots/selection-popover.png)
+![Simple buttons for highlighting, annotating, or copying selected words](docs/screenshots/selection-popover-light-retina.png)
 
 You can use a plain highlight, underline, dotted underline, dashed underline,
 box, or strike-through. Four colours help different kinds of thought stand
@@ -47,7 +47,7 @@ apart.
 Point to a note or click it and the card opens to show everything you wrote. A
 long note is not cut off. Click the pin when you want a card to stay open.
 
-![A long selected note opened to its full height beside the PDF](docs/screenshots/annotation-card-expanded.png)
+![A long selected note opened to its full height beside the PDF](docs/screenshots/annotation-card-expanded-light-retina.png)
 
 *The selected note opens fully while the other cards stay out of the way.*
 
@@ -57,14 +57,14 @@ Click the list button beside **Annotate** to see every mark and note in the PDF.
 Search for a word, a page, or something you wrote. Click any result to go back
 to its page and show its card.
 
-![The searchable list of notes beside the PDF](docs/screenshots/annotation-list.png)
+![The searchable list of notes beside the PDF](docs/screenshots/annotation-list-light-retina.png)
 
 ## Put notes where you want them
 
 Right-click any card to keep it open, move it to the left, move it to the right,
 let PDF Annotator choose a side, or delete it.
 
-![The right-click menu for pinning, moving, or deleting a note](docs/screenshots/annotation-card-menu.png)
+![The right-click menu for pinning, moving, or deleting a note](docs/screenshots/annotation-card-menu-light-retina.png)
 
 *Moving a card never moves or changes the words you marked.*
 
