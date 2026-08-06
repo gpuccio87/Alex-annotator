@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outputDir = mkdtempSync(path.join(tmpdir(), "local-pdf-annotator-tests-"));
 const tests = [
+  { entry: "test/margin-card-smoke.ts" },
   { entry: "test/pdf-data-smoke.ts" },
   { entry: "test/bundle-identity-smoke.ts" },
   {

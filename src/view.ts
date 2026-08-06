@@ -31,6 +31,7 @@ import { buildDocIndex, anchorQuote } from "./anchor";
 import { parseLegacyNote, targetBasename, type LegacyAnnotation } from "./legacy-import";
 import { PdfBundleManager } from "./bundles";
 import { copyPdfDataForWorker } from "./pdf-data";
+import { marginCardSourceText, syncMarginCardPresentation } from "./margin-card";
 
 export const VIEW_TYPE_PDF_ANNOTATOR = "local-pdf-annotator-view";
 
@@ -770,6 +771,7 @@ export class PdfAnnotatorView extends FileView {
     note.onfocus = () => this.activateHighlight(h.id);
     note.oninput = () => {
       this.store?.update(h.id, { note: note.value });
+      syncMarginCardPresentation(card);
       const pv = this.pageViews[h.page];
       if (pv?.rendered) {
         this.renderHighlights(pv);
@@ -780,7 +782,7 @@ export class PdfAnnotatorView extends FileView {
     };
 
     if (type === "highlight") {
-      card.createDiv({ cls: "lpa-margin-source", text: shortAnnotationText(h.text, 180) });
+      card.createDiv({ cls: "lpa-margin-source", text: marginCardSourceText(h.text) });
     }
 
     const sideNote = card.createEl("textarea", {
@@ -791,10 +793,12 @@ export class PdfAnnotatorView extends FileView {
     sideNote.onfocus = () => this.activateHighlight(h.id);
     sideNote.oninput = () => {
       this.store?.update(h.id, { noteContentCJK: sideNote.value.trim() ? sideNote.value : undefined });
+      syncMarginCardPresentation(card);
       this.renderAnnotationRollList();
       this.scheduleMarginLayout();
     };
 
+    syncMarginCardPresentation(card);
     return card;
   }
 
@@ -856,6 +860,7 @@ export class PdfAnnotatorView extends FileView {
         item.toggleClass("is-active", !!id && id === this.activeHighlightId);
         item.toggleClass("is-hover", !!id && id === this.hoverHighlightId);
         item.toggleClass("is-expanded", !!id && (id === this.activeHighlightId || id === this.hoverHighlightId || !!this.store?.get(id)?.isPinned));
+        syncMarginCardPresentation(item);
       }
     }
     if (this.rootEl) {

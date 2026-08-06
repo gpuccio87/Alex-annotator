@@ -53,6 +53,7 @@ import { buildDocIndex, anchorQuote } from "./anchor";
 import { parseLegacyNote, targetBasename, type LegacyAnnotation } from "./legacy-import";
 import { PdfBundleManager } from "./bundles";
 import { copyPdfDataForWorker } from "./pdf-data";
+import { marginCardSourceText, syncMarginCardPresentation } from "./margin-card";
 
 const MAX_HIGHLIGHT_ALPHA = 0.46;
 /** DOM that belongs to us; mutations inside it must not re-trigger syncing. */
@@ -1750,6 +1751,7 @@ export class NativePdfOverlay {
       // Store + page marks + list panel, but no card rebuild: the rebuild
       // path skips value writes on the focused textarea anyway.
       this.store?.update(h.id, { note: note.value });
+      syncMarginCardPresentation(card);
       this.repaintPage(h.page);
       this.updateCount();
       if (this.listPanelEl) this.renderListItems();
@@ -1757,7 +1759,7 @@ export class NativePdfOverlay {
     };
 
     if (type === "highlight" && h.text) {
-      card.createDiv({ cls: "lpa-margin-source", text: shortAnnotationText(h.text, 180) });
+      card.createDiv({ cls: "lpa-margin-source", text: marginCardSourceText(h.text) });
     }
 
     const sideNote = card.createEl("textarea", {
@@ -1768,6 +1770,7 @@ export class NativePdfOverlay {
     sideNote.onfocus = () => this.setActiveAnnotation(h.id);
     sideNote.oninput = () => {
       this.store?.update(h.id, { noteContentCJK: sideNote.value.trim() ? sideNote.value : undefined });
+      syncMarginCardPresentation(card);
       if (this.listPanelEl) this.renderListItems();
       this.scheduleRailLayout();
     };
@@ -1799,6 +1802,7 @@ export class NativePdfOverlay {
     if (sideNote && doc.activeElement !== sideNote && sideNote.value !== (h.noteContentCJK ?? "")) {
       sideNote.value = h.noteContentCJK ?? "";
     }
+    syncMarginCardPresentation(card);
     const pin = card.querySelector<HTMLElement>(".lpa-pin-btn");
     if (pin) {
       const label = h.isPinned ? "Unpin annotation card" : "Pin annotation card";
@@ -2068,7 +2072,9 @@ export class NativePdfOverlay {
         card.toggleClass("is-active", !!id && id === this.activeId);
         card.toggleClass("is-hover", !!id && id === this.hoverId);
         card.toggleClass("is-expanded", pinned || (!!id && (id === this.activeId || id === this.hoverId)));
+        syncMarginCardPresentation(card);
       }
+      this.scheduleRailLayout();
     }
     for (const mark of Array.from(root.querySelectorAll<HTMLElement>(".lpa-native-hl-layer .lpa-highlight"))) {
       const ids = (mark.dataset.hlIds ?? "").split(/\s+/).filter(Boolean);

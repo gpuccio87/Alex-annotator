@@ -1252,7 +1252,7 @@
 .lpa-margin-card {
   position: absolute;
   width: min(calc(100% - 14px), var(--lpa-card-max, 156px));
-  max-height: 56px;
+  max-height: var(--lpa-card-folded-height, 56px);
   overflow: hidden;
   padding: 13px 7px 6px 8px;
   border: 0.5px solid var(--background-modifier-border);
@@ -1304,7 +1304,7 @@
 }
 .lpa-margin.is-tight .lpa-margin-card {
   width: calc(100% - 6px);
-  max-height: 50px;
+  max-height: var(--lpa-card-folded-height, 50px);
   padding: 11px 5px 5px;
   border-radius: 3px;
 }
@@ -1322,7 +1322,7 @@
 }
 .lpa-margin.is-compact .lpa-margin-card {
   width: min(calc(100% - 10px), var(--lpa-card-max, 132px));
-  max-height: 54px;
+  max-height: var(--lpa-card-folded-height, 54px);
   padding: 12px 6px 6px;
 }
 .lpa-margin.is-compact .lpa-margin-card::before {
@@ -1336,7 +1336,7 @@
   left: 5px;
 }
 .lpa-margin.is-roomy .lpa-margin-card {
-  max-height: 66px;
+  max-height: var(--lpa-card-folded-height, 66px);
   padding: 14px 8px 7px;
 }
 .lpa-margin.is-roomy .lpa-margin-card::before,
@@ -1345,7 +1345,7 @@
   right: 8px;
 }
 .lpa-margin.is-spacious .lpa-margin-card {
-  max-height: 78px;
+  max-height: var(--lpa-card-folded-height, 78px);
 }
 .lpa-margin-card--tag {
   opacity: 0;
@@ -1355,7 +1355,11 @@
 .lpa-margin-card.is-active,
 .lpa-margin-card.is-pinned,
 .lpa-margin-card:hover {
-  max-height: 260px;
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  z-index: 8;
   opacity: 1;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 46%),
@@ -1368,17 +1372,20 @@
 .lpa-margin-card.is-pinned::before {
   height: 5px;
 }
+.lpa-margin-card.is-active {
+  z-index: 9;
+}
 .lpa-margin.is-tight .lpa-margin-card.is-hover,
 .lpa-margin.is-tight .lpa-margin-card.is-active,
 .lpa-margin.is-tight .lpa-margin-card.is-pinned,
 .lpa-margin.is-tight .lpa-margin-card:hover {
-  max-height: 230px;
+  max-height: calc(100% - 16px);
 }
 .lpa-margin.is-compact .lpa-margin-card.is-hover,
 .lpa-margin.is-compact .lpa-margin-card.is-active,
 .lpa-margin.is-compact .lpa-margin-card.is-pinned,
 .lpa-margin.is-compact .lpa-margin-card:hover {
-  max-height: 250px;
+  max-height: calc(100% - 16px);
 }
 .lpa-margin.is-roomy .lpa-margin-card.is-hover,
 .lpa-margin.is-roomy .lpa-margin-card.is-active,
@@ -1388,7 +1395,7 @@
 .lpa-margin.is-spacious .lpa-margin-card.is-active,
 .lpa-margin.is-spacious .lpa-margin-card.is-pinned,
 .lpa-margin.is-spacious .lpa-margin-card:hover {
-  max-height: 280px;
+  max-height: calc(100% - 16px);
 }
 .lpa-body.is-scrolling .lpa-margin-card {
   transition:
@@ -1469,6 +1476,7 @@
   font-size: 10.8px;
   line-height: 1.28;
   overflow: hidden;
+  field-sizing: content;
 }
 .lpa-margin.is-tight .lpa-margin-note {
   min-height: 18px;
@@ -1519,7 +1527,8 @@
 .lpa-margin-card.is-active .lpa-margin-source,
 .lpa-margin-card.is-pinned .lpa-margin-source,
 .lpa-margin-card:hover .lpa-margin-source {
-  max-height: 78px;
+  max-height: none;
+  overflow: visible;
 }
 .lpa-margin-side-note {
   margin-top: 4px;
@@ -1538,7 +1547,7 @@
 .lpa-margin-card.is-pinned .lpa-margin-side-note,
 .lpa-margin-card:hover .lpa-margin-side-note {
   opacity: 1;
-  max-height: 60px;
+  max-height: none;
 }
 .lpa-connection-line {
   fill: none;
