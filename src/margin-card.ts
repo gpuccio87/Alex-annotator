@@ -48,6 +48,61 @@ export function fitFoldedMarginCardHeights(heights: number[], availableHeight: n
   return clean.map((_, index) => Math.round(floors[index] + extras[index] * scale));
 }
 
+export interface PageBoundedCardLayoutItem {
+  page: number;
+  idealY: number;
+  height: number;
+  pageTopY: number;
+  pageBottomY: number;
+}
+
+/** Stack cards inside their own page band instead of the viewport band.
+ *
+ * Keeping the page bounds in the same coordinate space as `idealY` makes the
+ * result translation invariant: when a page scrolls by 100px, every card for
+ * that page also moves by 100px. The viewport clips cards naturally as they
+ * leave it, and cards from an entering adjacent page start in that page's own
+ * band instead of being packed into the outgoing page's stack. */
+export function layoutPageBoundedCardTops(
+  items: PageBoundedCardLayoutItem[],
+  gap = 5,
+  inset = 8
+): number[] {
+  const tops = new Array<number>(items.length);
+  const byPage = new Map<number, Array<{ item: PageBoundedCardLayoutItem; index: number }>>();
+  items.forEach((item, index) => {
+    const group = byPage.get(item.page) ?? [];
+    group.push({ item, index });
+    byPage.set(item.page, group);
+  });
+
+  for (const group of byPage.values()) {
+    group.sort((a, b) => a.item.idealY - b.item.idealY || a.index - b.index);
+    const pageTop = Math.min(...group.map(({ item }) => item.pageTopY));
+    const pageBottom = Math.max(...group.map(({ item }) => item.pageBottomY));
+    const pageStart = pageTop + inset;
+    const pageEnd = Math.max(pageStart, pageBottom - inset);
+
+    let y = pageStart;
+    for (const entry of group) {
+      y = Math.max(entry.item.idealY, y);
+      tops[entry.index] = y;
+      y += Math.max(24, entry.item.height) + gap;
+    }
+
+    const overflow = y - gap - pageEnd;
+    if (overflow > 0) {
+      const firstTop = tops[group[0].index];
+      const shift = Math.min(overflow, Math.max(0, firstTop - pageStart));
+      if (shift > 0) {
+        for (const entry of group) tops[entry.index] -= shift;
+      }
+    }
+  }
+
+  return tops;
+}
+
 function displayUnits(text: string, weight = 1): number {
   const lineBreaks = (text.match(/\n/g) ?? []).length;
   const wideCharacters = (text.match(/[\u2e80-\u9fff\uf900-\ufaff]/g) ?? []).length;

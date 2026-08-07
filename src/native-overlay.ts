@@ -55,6 +55,7 @@ import { PdfBundleManager } from "./bundles";
 import { copyPdfDataForWorker } from "./pdf-data";
 import {
   fitFoldedMarginCardHeights,
+  layoutPageBoundedCardTops,
   marginCardSourceText,
   syncMarginCardPresentation,
 } from "./margin-card";
@@ -113,6 +114,8 @@ interface NativeAnchor {
   sourceX: number;
   sourceY: number;
   idealY: number;
+  pageTopY: number;
+  pageBottomY: number;
   pageLeftX: number;
   pageRightX: number;
 }
@@ -342,6 +345,8 @@ export class NativePdfOverlay {
   private connectionSvg: SVGSVGElement | null = null;
   private railResizeObserver: ResizeObserver | null = null;
   private scroller: HTMLElement | null = null;
+  private railScrollTarget: HTMLElement | null = null;
+  private readonly railScrollHandler = () => this.onNativeScroll();
   private railWidths = { left: 0, right: 0 };
   private railRaf: number | null = null;
   private railAutoZoomToken = 0;
@@ -1332,12 +1337,15 @@ export class NativePdfOverlay {
       attr: { "aria-label": "Right annotations" },
     });
 
-    // Scroll doesn't bubble, but a capture listener on the content root sees
-    // the native scroller's events without touching the scroller itself.
-    this.listen(root, "scroll", () => this.onNativeScroll(), { capture: true, passive: true });
+    // Native PDF scrolling is owned by a nested `.pdf-viewer-container`.
+    // Bind that element directly: its scroll events do not bubble reliably
+    // through every Obsidian/Electron PDF-viewer composition.
+    this.bindRailScroller(this.findScroller() ?? root);
     this.railResizeObserver = new ResizeObserver(() => this.scheduleRailLayout());
     this.railResizeObserver.observe(root);
     this.cleanups.push(() => {
+      this.railScrollTarget?.removeEventListener("scroll", this.railScrollHandler);
+      this.railScrollTarget = null;
       this.railResizeObserver?.disconnect();
       this.railResizeObserver = null;
     });
@@ -1384,6 +1392,15 @@ export class NativePdfOverlay {
       el = el.parentElement;
     }
     return this.scroller ?? root;
+  }
+
+  /** Keep the listener attached to the currently live native PDF scroller.
+   * Obsidian can replace this element while rebuilding the PDF view. */
+  private bindRailScroller(scroller: HTMLElement): void {
+    if (this.railScrollTarget === scroller) return;
+    this.railScrollTarget?.removeEventListener("scroll", this.railScrollHandler);
+    this.railScrollTarget = scroller;
+    scroller.addEventListener("scroll", this.railScrollHandler, { passive: true });
   }
 
   private async ensureReadableRailForAnnotation(id: string): Promise<void> {
@@ -1434,6 +1451,7 @@ export class NativePdfOverlay {
 
     const rootRect = root.getBoundingClientRect();
     const scroller = this.findScroller() ?? root;
+    this.bindRailScroller(scroller);
     const areaRect = scroller === root ? rootRect : scroller.getBoundingClientRect();
     if (areaRect.width < 60 || areaRect.height < 60) return null;
 
@@ -1533,6 +1551,7 @@ export class NativePdfOverlay {
 
     const rootRect = root.getBoundingClientRect();
     const scroller = this.findScroller() ?? root;
+    this.bindRailScroller(scroller);
     // Track native zoom: page sizes change via the viewer's content element,
     // which may resize without any watched mutation. observe() is idempotent
     // and detached elements are dropped automatically.
@@ -1644,13 +1663,24 @@ export class NativePdfOverlay {
     const explicit = h.marginSide === "left" || h.marginSide === "right" ? h.marginSide : null;
     const pageLeftX = box.left - areaRect.left;
     const pageRightX = box.right - areaRect.left;
+    const pageTopY = box.top - areaRect.top;
+    const pageBottomY = box.bottom - areaRect.top;
 
     if (annotationTypeOf(h) === "tag") {
       if (typeof h.tagX !== "number" || typeof h.tagY !== "number") return null;
       const sourceX = pageLeftX + (clamp(0, h.tagX, 100) / 100) * box.width;
       const sourceY = box.top - areaRect.top + (clamp(0, h.tagY, 100) / 100) * box.height;
       const side = this.chooseRailSide(explicit, h.tagX < 50 ? "left" : "right");
-      return { side, sourceX, sourceY, idealY: sourceY, pageLeftX, pageRightX };
+      return {
+        side,
+        sourceX,
+        sourceY,
+        idealY: sourceY,
+        pageTopY,
+        pageBottomY,
+        pageLeftX,
+        pageRightX,
+      };
     }
 
     if (h.rects.length === 0) return null;
@@ -1671,6 +1701,8 @@ export class NativePdfOverlay {
       sourceX: pageLeftX + sourceEdge * sx,
       sourceY: box.top - areaRect.top + ((first.top + first.bottom) / 2) * sy,
       idealY: box.top - areaRect.top + first.top * sy,
+      pageTopY,
+      pageBottomY,
       pageLeftX,
       pageRightX,
     };
@@ -1833,43 +1865,47 @@ export class NativePdfOverlay {
     }
   }
 
-  /** Stack cards per rail: keep each near its anchor, never overlapping, and
-   * shift the column up if it would overflow the viewport bottom. */
+  /** Stack each page's cards inside that page's moving vertical band. */
   private stackRailCards(desired: RailEntry[]): void {
     const byId = new Map(desired.map((d) => [d.h.id, d]));
     for (const rail of [this.leftRailEl, this.rightRailEl]) {
       if (!rail) continue;
       const cards = Array.from(rail.querySelectorAll<HTMLElement>(".lpa-margin-card"));
       const gap = 5;
-      applyMarginCardDensity(cards, rail.clientHeight, gap);
-      const items = cards
-        .map((card) => {
-          const entry = byId.get(card.dataset.hlId ?? "");
-          const idealY = entry
-            ? entry.anchor.idealY
-            : Number.parseFloat(card.style.top || "0"); // focused orphan: hold position
-          return { card, idealY, height: measureMarginCardHeight(card) };
-        })
-        .sort((a, b) => a.idealY - b.idealY);
-      let y = 8;
-      for (const item of items) {
-        y = Math.max(item.idealY, y);
-        item.card.setCssProps({ top: `${Math.round(y)}px` });
-        y += item.height + gap;
+      const groups = new Map<number, Array<{ card: HTMLElement; entry: RailEntry }>>();
+      for (const card of cards) {
+        const entry = byId.get(card.dataset.hlId ?? "");
+        if (!entry) continue; // focused off-screen orphan: hold its last position
+        const group = groups.get(entry.h.page) ?? [];
+        group.push({ card, entry });
+        groups.set(entry.h.page, group);
       }
-      const overflow = y - gap - (rail.clientHeight - 8);
-      if (overflow > 0 && items.length) {
-        const shift = Math.min(
-          overflow,
-          Math.max(0, Number.parseFloat(items[0].card.style.top || "0") - 8)
+      for (const group of groups.values()) {
+        const anchor = group[0].entry.anchor;
+        applyMarginCardDensity(
+          group.map(({ card }) => card),
+          Math.max(1, anchor.pageBottomY - anchor.pageTopY),
+          gap
         );
-        if (shift > 0) {
-          for (const item of items) {
-            const top = Number.parseFloat(item.card.style.top || "0");
-            item.card.setCssProps({ top: `${Math.round(top - shift)}px` });
-          }
-        }
       }
+      const items = Array.from(groups.values()).flat().map(({ card, entry }) => ({
+        card,
+        entry,
+        height: measureMarginCardHeight(card),
+      }));
+      const tops = layoutPageBoundedCardTops(
+        items.map(({ entry, height }) => ({
+          page: entry.h.page,
+          idealY: entry.anchor.idealY,
+          height,
+          pageTopY: entry.anchor.pageTopY,
+          pageBottomY: entry.anchor.pageBottomY,
+        })),
+        gap
+      );
+      items.forEach((item, index) => {
+        item.card.setCssProps({ top: `${Math.round(tops[index])}px` });
+      });
     }
   }
 

@@ -33,6 +33,7 @@ import { PdfBundleManager } from "./bundles";
 import { copyPdfDataForWorker } from "./pdf-data";
 import {
   fitFoldedMarginCardHeights,
+  layoutPageBoundedCardTops,
   marginCardSourceText,
   syncMarginCardPresentation,
 } from "./margin-card";
@@ -95,6 +96,8 @@ interface AnnotationAnchor {
   sourceX: number;
   sourceY: number;
   idealY: number;
+  pageTopY: number;
+  pageBottomY: number;
   sourceWidth: number;
   sourceHeight: number;
   pageLeftX: number;
@@ -642,7 +645,7 @@ export class PdfAnnotatorView extends FileView {
 
       const margin = anchor.side === "left" ? this.leftMarginEl : this.rightMarginEl;
       const card = this.createMarginCard(margin, h, anchor.side);
-      card.setCssProps({ top: `${Math.max(0, anchor.idealY)}px` });
+      card.setCssProps({ top: `${Math.round(anchor.idealY)}px` });
     }
     this.renderAnnotationRollList();
     this.syncHighlightBindingState();
@@ -1987,6 +1990,8 @@ export class PdfAnnotatorView extends FileView {
         sourceX: sourceXViewport - bodyRect.left,
         sourceY: sourceYViewport - bodyRect.top,
         idealY: sourceYViewport - bodyRect.top,
+        pageTopY: pageRect.top - bodyRect.top,
+        pageBottomY: pageRect.bottom - bodyRect.top,
         sourceWidth: 12,
         sourceHeight: 18,
         pageLeftX: pageRect.left - bodyRect.left,
@@ -2013,6 +2018,8 @@ export class PdfAnnotatorView extends FileView {
       sourceX: pageRect.left + sourceEdge - bodyRect.left,
       sourceY: pageRect.top + lineCenterY - bodyRect.top,
       idealY: pageRect.top + firstLine.top - bodyRect.top,
+      pageTopY: pageRect.top - bodyRect.top,
+      pageBottomY: pageRect.bottom - bodyRect.top,
       sourceWidth: right - left,
       sourceHeight: bottom - top,
       pageLeftX: pageRect.left - bodyRect.left,
@@ -2121,33 +2128,42 @@ export class PdfAnnotatorView extends FileView {
     if (!margin) return;
     const cardElements = Array.from(margin.querySelectorAll<HTMLElement>(".lpa-margin-card"));
     const gap = 5;
-    applyMarginCardDensity(cardElements, margin.clientHeight, gap);
     const cards = cardElements
       .map((card) => {
         const id = card.dataset.hlId ?? "";
         const h = id ? this.store?.get(id) : undefined;
         const anchor = h ? this.computeAnnotationAnchor(h) : null;
-        return h && anchor ? { card, h, anchor, height: measureMarginCardHeight(card) } : null;
+        return h && anchor ? { card, h, anchor } : null;
       })
-      .filter((item): item is { card: HTMLElement; h: Highlight; anchor: AnnotationAnchor; height: number } => !!item)
-      .sort((a, b) => a.anchor.idealY - b.anchor.idealY);
-    let y = 8;
+      .filter((item): item is { card: HTMLElement; h: Highlight; anchor: AnnotationAnchor } => !!item);
+    const groups = new Map<number, typeof cards>();
     for (const item of cards) {
-      const idealTop = item.anchor.idealY;
-      y = Math.max(idealTop, y);
-      item.card.setCssProps({ top: `${Math.round(y)}px` });
-      y += item.height + gap;
+      const group = groups.get(item.h.page) ?? [];
+      group.push(item);
+      groups.set(item.h.page, group);
     }
-    const overflow = y - gap - (margin.clientHeight - 8);
-    if (overflow > 0 && cards.length) {
-      const shift = Math.min(overflow, Math.max(0, Number.parseFloat(cards[0].card.style.top || "0") - 8));
-      if (shift > 0) {
-        for (const item of cards) {
-          const top = Number.parseFloat(item.card.style.top || "0");
-          item.card.setCssProps({ top: `${Math.round(top - shift)}px` });
-        }
-      }
+    for (const group of groups.values()) {
+      const anchor = group[0].anchor;
+      applyMarginCardDensity(
+        group.map(({ card }) => card),
+        Math.max(1, anchor.pageBottomY - anchor.pageTopY),
+        gap
+      );
     }
+    const measured = cards.map((item) => ({ ...item, height: measureMarginCardHeight(item.card) }));
+    const tops = layoutPageBoundedCardTops(
+      measured.map(({ h, anchor, height }) => ({
+        page: h.page,
+        idealY: anchor.idealY,
+        height,
+        pageTopY: anchor.pageTopY,
+        pageBottomY: anchor.pageBottomY,
+      })),
+      gap
+    );
+    measured.forEach((item, index) => {
+      item.card.setCssProps({ top: `${Math.round(tops[index])}px` });
+    });
   }
 
   private redrawConnectionLines(): void {
