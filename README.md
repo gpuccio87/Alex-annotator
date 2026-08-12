@@ -1,7 +1,7 @@
 ## 🚀 About this fork
 
 * **Custom Color Selector:** Added a customizable color picker (ranging from 1 to 5 colors) directly from the settings.
-* **HTML \<mark> Tag Integration in Markdown Export (bundles.ts):** Configured the system so that all text highlights exported into the .annotations.md file are wrapped inside HTML \<mark style="background: [color];">...\</mark> tags. This ensures that when Obsidian renders the file, it applies the exact background color chosen by the user for that specific highlight.
+* **HTML \<mark> Tag Integration in Markdown Export (bundles.ts):** Configured the system so that all text highlights exported into the .annotations.md file are wrapped inside HTML \<mark style="background: [color];">...\</mark> tags. This ensures that when Obsidian renders the file, it applies the exact background color chosen by the user for that specific highlight. This option can be turned off in settings.
 * **Inline Note Inclusion Within the Tag:** Updated the logic so that if a user writes a personal note associated with a highlight, it is rendered directly inside the same \<mark> block (placed right after the highlighted text, enclosed in parentheses, and formatted in italics: *(note: ...)*). This keeps the text and the note visually bound together under the same background color styling.
 * **Dedicated Configuration Options:** Added and integrated configuration settings within the plugin preferences to handle formatting behavior and wrapping with the \<mark> tag, ensuring the system consistently adheres to this structure during data synchronization and export.
 * **Custom Annotation Icon:** Replaced the default colored square placeholder with the note emoji (`🗒️`) for all highlight annotations.
