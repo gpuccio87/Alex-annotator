@@ -1,3 +1,4 @@
+Original plugin:
 # PDF Annotator
 
 Read a PDF, mark the parts that matter, and keep your own thoughts beside the
@@ -76,6 +77,16 @@ let PDF Annotator choose a side, or delete it.
 4. Write your thought.
 5. Keep reading; your note stays beside the page.
 6. Use the list when you want to find it again.
+
+## 🚀 About this fork
+
+* **Custom Annotation Icon:** Replaced the default colored square placeholder with the note emoji (`🗒️`) for all highlight annotations.
+* **Custom Color Selector:** Added a customizable color picker (ranging from 1 to 5 colors) directly from the settings.
+* **`<mark>` Tag Options:** Added dedicated configuration options for the `<mark>` tag.
+* **Inline Note Inclusion in Markdown:** Updated the Markdown generation so that user-written notes (the `note` field) now appear directly on the same line as the annotation, placed right after the highlighted text, enclosed in parentheses, and formatted in italics (`*(note: ...)*`).
+* **Spacing Between Annotations:** Added an automatic blank line between each annotation in the export file to significantly improve document readability and formatting.
+* **TypeScript Build Bug Fixes:** Resolved missing type issues (implicit `any` types and path parameters) in `main.ts` and cleared non-standard space characters in `bundles.ts` to ensure a clean build and prevent module resolution errors.
+
 
 ---
 
