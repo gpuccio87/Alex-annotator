@@ -88,6 +88,7 @@ export class PdfBundleManager {
 
   constructor(private app: App) {}
 
+  /** Create or resolve the stable bundle before annotation state is loaded. */
   async prepare(
     file: TFile,
     pdfData: ArrayBuffer,
@@ -110,6 +111,7 @@ export class PdfBundleManager {
     }
   }
 
+  /** Best-effort metadata sync. Identity and recovery do not depend on it. */
   async onPdfRenamed(file: TFile, oldPath: string): Promise<void> {
     const normalizedOld = normalizePath(oldPath);
     const hash = this.pathToHash.get(normalizedOld);
@@ -120,6 +122,7 @@ export class PdfBundleManager {
     if (binding) await this.touchBinding(binding, file.path, file.name, undefined, oldPath);
   }
 
+  /** Keep the recovery bundle after the working PDF is deleted. */
   async onPdfDeleted(path: string): Promise<void> {
     const normalized = normalizePath(path);
     const hash = this.pathToHash.get(normalized);
@@ -190,7 +193,8 @@ export class PdfBundleManager {
     return restored;
   }
 
-  async exportAnnotations(file: TFile, exportFolder: string): Promise<string> {
+  /** Write a user-visible snapshot without making that path authoritative. */
+  async exportAnnotations(file: TFile, exportFolder: string, template = "{{annotation_note}}"): Promise<string> {
     const data = await this.app.vault.readBinary(file);
     const hash = await sha256Hex(data);
     const binding = await this.readBinding(hash);
@@ -206,7 +210,7 @@ export class PdfBundleManager {
     const rawJson = await this.app.vault.adapter.read(binding.annotationPath);
     const parsedDoc = parseAnnotations(rawJson);
     const markdownContent = parsedDoc
-      ? generateMarkdownExport(parsedDoc, file.basename)
+      ? generateMarkdownExport(parsedDoc, file.basename, template)
       : rawJson;
 
     await this.app.vault.adapter.write(exportPath, markdownContent);
@@ -418,44 +422,58 @@ export class PdfBundleManager {
 }
 
 function colorToEmoji(_color: string): string {
+  // Replaced the colored square with the 🗒️ note emoji as requested
   return "🗒️";
 }
 
-function generateMarkdownExport(doc: { pdf: string; highlights: any[] }, pdfBasename: string): string {
-  const lines: string[] = [];
-  lines.push("---");
-  lines.push("lpa-annotations: 1");
-  lines.push(`pdf: "${doc.pdf}"`);
-  lines.push("---");
-  lines.push("");
-  lines.push(`# Annotations — ${pdfBasename}`);
-  lines.push("");
-  lines.push("<!-- Managed by PDF Annotator. The \`\`\`json block at the bottom is the source of truth; the list above is for reading. Editing the prose is safe; keep the json block intact. -->");
-  lines.push("");
+function generateMarkdownExport(doc: { pdf: string; highlights: any[] }, pdfBasename: string, template = "{{annotation_note}}"): string {
+  const frontmatterLines: string[] = [];
+  frontmatterLines.push("---");
+  frontmatterLines.push("lpa-annotations: 1");
+  frontmatterLines.push(`pdf: "${doc.pdf}"`);
+  frontmatterLines.push("---");
+  frontmatterLines.push("");
+
+  const annotationLines: string[] = [];
+  annotationLines.push(`# Annotations — ${pdfBasename}`);
+  annotationLines.push("");
+  annotationLines.push("<!-- Managed by PDF Annotator. The \`\`\`json block at the bottom is the source of truth; the list above is for reading. Editing the prose is safe; keep the json block intact. -->");
+  annotationLines.push("");
 
   for (const h of doc.highlights) {
     if (h.type === "tag") {
       const text = (h.note || "Page note").replace(/\s+/g, " ").trim();
-      lines.push(`- p.${h.page + 1} 📌 ^${h.id} — <mark style="background: ${h.color};">${text}</mark>`);
+      annotationLines.push(`- p.${h.page + 1} 📌 ^${h.id} — <mark style="background: ${h.color};">${text}</mark>`);
     } else {
       const text = (h.text || "").replace(/\s+/g, " ").trim();
       const emoji = colorToEmoji(h.color);
       const noteText = (h.note || "").replace(/\s+/g, " ").trim();
       
       if (noteText) {
-        lines.push(`- p.${h.page + 1} ${emoji} ^${h.id} — <mark style="background: ${h.color};">${text} *(note: ${noteText})*</mark>`);
+        annotationLines.push(`- p.${h.page + 1} ${emoji} ^${h.id} — <mark style="background: ${h.color};">${text} *(note: ${noteText})*</mark>`);
       } else {
-        lines.push(`- p.${h.page + 1} ${emoji} ^${h.id} — <mark style="background: ${h.color};">${text}</mark>`);
+        annotationLines.push(`- p.${h.page + 1} ${emoji} ^${h.id} — <mark style="background: ${h.color};">${text}</mark>`);
       }
     }
-    // Aggiunge una linea vuota dopo ogni annotazione
-    lines.push("");
+    // Adds a blank line after each annotation
+    annotationLines.push("");
   }
 
-  lines.push("```json");
-  lines.push(JSON.stringify(doc, null, 2));
-  lines.push("```");
-  lines.push("");
+  annotationLines.push("```json");
+  annotationLines.push(JSON.stringify(doc, null, 2));
+  annotationLines.push("```");
+  annotationLines.push("");
 
-  return lines.join("\n");
+  const renderedAnnotations = annotationLines.join("\n");
+  const frontmatter = frontmatterLines.join("\n");
+
+  // Inserts the user template, putting the frontmatter at the top and replacing the placeholder
+  let compiledContent = "";
+  if (template.includes("{{annotation_note}}")) {
+    compiledContent = template.replace("{{annotation_note}}", renderedAnnotations);
+  } else {
+    compiledContent = `${template}\n\n${renderedAnnotations}`;
+  }
+
+  return `${frontmatter}\n${compiledContent}`;
 }
